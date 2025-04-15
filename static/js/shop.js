@@ -222,44 +222,64 @@ function handleBuyNow(productId) {
     }
 
     button.classList.add('clicked');
+    button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
     
-    fetch('/create-checkout-session/', {
-        method: 'POST',
+    // First check if user is authenticated
+    fetch('/check-auth/', {
+        method: 'GET',
         headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': getCookie('csrftoken'),
-        },
-        body: JSON.stringify({
-            product_id: productId,
-            quantity: quantity,
-            buy_now: true
-        })
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (!data.is_authenticated) {
+            // Save product details to session and redirect to login
+            sessionStorage.setItem('buyNowProduct', JSON.stringify({
+                productId: productId,
+                quantity: quantity
+            }));
+            window.location.href = '/login/?next=/checkout/buy-now/';
+            return;
+        }
+        
+        // If authenticated, proceed with direct checkout
+        return fetch('/checkout/buy-now/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: JSON.stringify({
+                product_id: productId,
+                quantity: quantity
+            })
+        });
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(data => {
-                throw new Error(data.message || 'Failed to process buy now request');
-            });
+        if (!response || !response.ok) {
+            if (response && response.status === 403) {
+                throw new Error('Please login to continue shopping');
+            }
+            throw new Error('Failed to process buy now request');
         }
         return response.json();
     })
     .then(data => {
         if (data.success) {
-            // Redirect to checkout page using the provided URL
-            window.location.href = data.redirect_url;
+            // Show loading state
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Redirecting...';
+            // Redirect to checkout page
+            window.location.href = data.checkout_url;
         } else {
-            throw new Error(data.message || 'Failed to process buy now request');
+            throw new Error(data.message || 'Failed to process request');
         }
     })
     .catch(error => {
         console.error('Error:', error);
         showNotification(error.message, 'error');
         button.classList.remove('clicked');
-    })
-    .finally(() => {
-        setTimeout(() => {
-            button.classList.remove('clicked');
-        }, 2000);
+        button.innerHTML = '<i class="fas fa-bolt"></i> Buy Now';
     });
 }
 

@@ -60,7 +60,7 @@
                         </div>
                         <div class="delivery-estimate">
                             <i class="fas fa-clock"></i>
-                            <span>Estimated Delivery: {{ order.created_at|date:"d M Y"|add_days:7 }}</span>
+                            <span>Estimated Delivery: {{ order.created_at|date:"d M Y" }} - {{ order.created_at|date:"d M Y" }}</span>
                         </div>
                     </div>
                 </div>
@@ -104,7 +104,7 @@
                     <i class="fas fa-truck"></i>
                     Track Order
                 </a>
-                <a href="{% url 'shop' %}" class="btn-continue">
+                <a href="{% url 'product' %}" class="btn-continue">
                     <i class="fas fa-shopping-bag"></i>
                     Continue Shopping
                 </a>

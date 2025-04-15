@@ -242,24 +242,39 @@
                     </div>
                     
                     <div class="order-items">
-                        {% for item in cart.cartitem_set.all %}
-                        <div class="order-item">
-                            <img src="{% if item.product.image %}{{ item.product.image.url }}{% else %}{% static 'img/medicines-icon.png' %}{% endif %}" 
-                                 alt="{{ item.product.name }}" 
-                                 class="item-image">
-                            <div class="item-info">
-                                <span class="item-name">{{ item.product.name }}</span>
-                                <span class="item-quantity">x{{ item.quantity }}</span>
+                        {% if mode == 'buy_now' %}
+                            {% for item in items %}
+                            <div class="order-item">
+                                <img src="{% if item.product.image %}{{ item.product.image.url }}{% else %}{% static 'img/medicines-icon.png' %}{% endif %}" 
+                                     alt="{{ item.product.name }}" 
+                                     class="item-image">
+                                <div class="item-info">
+                                    <span class="item-name">{{ item.product.name }}</span>
+                                    <span class="item-quantity">x{{ item.quantity }}</span>
+                                </div>
+                                <span class="item-price">₹{{ item.total|intcomma }}</span>
                             </div>
-                            <span class="item-price">₹{{ item.get_total|intcomma }}</span>
-                        </div>
-                        {% endfor %}
+                            {% endfor %}
+                        {% else %}
+                            {% for item in items %}
+                            <div class="order-item">
+                                <img src="{% if item.product.image %}{{ item.product.image.url }}{% else %}{% static 'img/medicines-icon.png' %}{% endif %}" 
+                                     alt="{{ item.product.name }}" 
+                                     class="item-image">
+                                <div class="item-info">
+                                    <span class="item-name">{{ item.product.name }}</span>
+                                    <span class="item-quantity">x{{ item.quantity }}</span>
+                                </div>
+                                <span class="item-price">₹{{ item.get_total|intcomma }}</span>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
                     </div>
 
                     <div class="price-summary">
                         <div class="price-row">
                             <span>Subtotal</span>
-                            <span>₹{{ cart.get_total|intcomma }}</span>
+                            <span>₹{{ total_amount|intcomma }}</span>
                         </div>
                         <div class="price-row">
                             <span>Delivery Fee</span>
@@ -267,7 +282,7 @@
                         </div>
                         <div class="price-row total">
                             <span>Total</span>
-                            <span>₹{{ cart.get_total|add:50|intcomma }}</span>
+                            <span>₹{{ grand_total|intcomma }}</span>
                         </div>
                     </div>
 
@@ -326,14 +341,22 @@ document.getElementById('checkoutForm').addEventListener('submit', function(e) {
     
     // Get selected address data
     const selectedAddress = document.querySelector('input[name="selected_address"]:checked');
-    if (selectedAddress) {
-        const addressId = selectedAddress.value;
-        // Add address ID to form data
-        formData.append('address_id', addressId);
+    if (!selectedAddress) {
+        alert('Please select a delivery address');
+        return;
     }
     
+    const addressId = selectedAddress.value;
+    formData.append('address_id', addressId);
+    
     if (paymentMethod === 'razorpay') {
-        fetch('/create-razorpay-order/', {
+        // Show loading state
+        const submitButton = document.querySelector('.place-order-btn');
+        const originalText = submitButton.innerHTML;
+        submitButton.innerHTML = 'Processing...';
+        submitButton.disabled = true;
+
+        fetch('/create-razorpay-order/' + {% if mode == 'buy_now' %}'?mode=buy_now'{% else %}''{% endif %}, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
@@ -343,7 +366,7 @@ document.getElementById('checkoutForm').addEventListener('submit', function(e) {
         .then(data => {
             if (data.success) {
                 const options = {
-                    key: 'rzp_test_tPcdMpc0pKpdgJ', // Your Razorpay test key
+                    key: '{{ RAZORPAY_KEY_ID }}',  // Using the key from Django context
                     amount: data.amount,
                     currency: data.currency,
                     name: 'QuickMeds',
@@ -367,32 +390,51 @@ document.getElementById('checkoutForm').addEventListener('submit', function(e) {
                                 window.location.href = '/order-confirmation/' + data.order_id;
                             } else {
                                 alert('Payment verification failed: ' + (data.error || 'Unknown error'));
+                                submitButton.innerHTML = originalText;
+                                submitButton.disabled = false;
                             }
                         })
                         .catch(error => {
                             console.error('Error processing payment:', error);
                             alert('An error occurred while processing your payment. Please try again.');
+                            submitButton.innerHTML = originalText;
+                            submitButton.disabled = false;
                         });
                     },
                     prefill: {
                         name: getFieldValue('first_name') + ' ' + getFieldValue('last_name'),
-                        email: getFieldValue('email'),
+                        email: '{{ user.email }}',
                         contact: getFieldValue('phone')
                     },
                     theme: {
                         color: '#3498db'
+                    },
+                    modal: {
+                        ondismiss: function() {
+                            submitButton.innerHTML = originalText;
+                            submitButton.disabled = false;
+                        }
                     }
                 };
                 
                 const rzp = new Razorpay(options);
+                rzp.on('payment.failed', function (response) {
+                    alert('Payment failed. Please try again.');
+                    submitButton.innerHTML = originalText;
+                    submitButton.disabled = false;
+                });
                 rzp.open();
             } else {
                 alert('Failed to create order: ' + (data.error || 'Unknown error'));
+                submitButton.innerHTML = originalText;
+                submitButton.disabled = false;
             }
         })
         .catch(error => {
             console.error('Error creating order:', error);
             alert('An error occurred while creating your order. Please try again.');
+            submitButton.innerHTML = originalText;
+            submitButton.disabled = false;
         });
     } else if (paymentMethod === 'cod') {
         fetch('/process-cod-order/', {

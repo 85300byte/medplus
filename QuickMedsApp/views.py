@@ -20,6 +20,7 @@ from .payment import create_payment_order, payment_callback, place_order
 import razorpay
 from .razorpay_utils import create_order, verify_payment
 from decouple import config
+from django.urls import reverse
 
 # Compare this snippet from QuickMeds-Online-Pharmacy/QuickMedsApp/views.py:    
 
@@ -87,7 +88,7 @@ def home(request):
         'random_products': random_products,
         'cart_count': get_cart_count(request),
     }
-    return render(request, 'home.html', context)
+    return render(request, 'index.html', context)
 
 def about_view(request):
     context = {
@@ -748,27 +749,67 @@ def showEmptyCartMessage():
     return JsonResponse({'success': False, 'error': 'Your cart is empty'})
 
 @login_required
-def checkout_view(request):
-    if not request.user.is_authenticated:
-        return redirect('login')
-        
-    cart = Cart.objects.get_or_create(user=request.user)[0]
-    if not cart.cartitem_set.exists():
-        messages.warning(request, 'Your cart is empty')
-        return redirect('cart')
-        
-    # Get user's addresses
-    addresses = request.user.addresses.all().order_by('-is_default', '-created_at')
+def checkout(request):
+    mode = request.GET.get('mode')
     
-    # Get Razorpay key from environment
-    razorpay_key_id = config('RAZORPAY_KEY_ID')
+    if mode == 'buy_now':
+        # Get buy now order from session
+        buy_now_order = request.session.get('buy_now_order')
+        if not buy_now_order:
+            messages.error(request, 'No order information found')
+            return redirect('product')
+            
+        try:
+            product = Product.objects.get(id=buy_now_order['product_id'])
+            quantity = buy_now_order['quantity']
+            
+            # Verify stock again
+            if not product.in_stock or product.stock < quantity:
+                messages.error(request, 'Product is out of stock or requested quantity not available')
+                return redirect('product')
+            
+            # Calculate total
+            total = float(product.price * quantity)
+            
+            context = {
+                'mode': 'buy_now',
+                'items': [{
+                    'product': product,
+                    'quantity': quantity,
+                    'total': total
+                }],
+                'total_amount': total,
+                'shipping_fee': 0,  # Add your shipping logic here
+                'grand_total': total,  # Add shipping fee if applicable
+                'RAZORPAY_KEY_ID': settings.RAZORPAY_KEY_ID  # Add Razorpay key to context
+            }
+            
+            return render(request, 'checkout.html', context)
+            
+        except Product.DoesNotExist:
+            messages.error(request, 'Product not found')
+            return redirect('product')
+            
+    else:
+        # Regular cart checkout
+        cart = Cart.objects.filter(user=request.user).first()
+        if not cart or not cart.cartitem_set.exists():
+            messages.warning(request, 'Your cart is empty')
+            return redirect('cart')
+            
+        cart_items = cart.cartitem_set.all()
+        total_amount = sum(item.product.price * item.quantity for item in cart_items)
         
-    context = {
-        'cart': cart,
-        'razorpay_key_id': razorpay_key_id,
-        'addresses': addresses,
-    }
-    return render(request, 'checkout.html', context)
+        context = {
+            'mode': 'cart',
+            'items': cart_items,
+            'total_amount': total_amount,
+            'shipping_fee': 0,  # Add your shipping logic here
+            'grand_total': total_amount,  # Add shipping fee if applicable
+            'RAZORPAY_KEY_ID': settings.RAZORPAY_KEY_ID  # Add Razorpay key to context
+        }
+        
+        return render(request, 'checkout.html', context)
 
 @login_required
 @require_http_methods(["GET", "POST", "PUT", "DELETE"])
@@ -1071,35 +1112,63 @@ def order_confirmation_view(request, order_id):
 @require_POST
 def create_razorpay_order(request):
     try:
-        # Try to get user's cart or show clear error if it doesn't exist
-        try:
-            cart = Cart.objects.get(user=request.user)
-            if not cart.cartitem_set.exists():
+        # Initialize Razorpay client
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        
+        # Check if this is a buy now order
+        mode = request.GET.get('mode')
+        if mode == 'buy_now':
+            # Get buy now order from session
+            buy_now_order = request.session.get('buy_now_order')
+            if not buy_now_order:
                 return JsonResponse({
                     'success': False,
-                    'error': 'Your cart is empty. Please add items to cart before checkout.'
+                    'error': 'No order information found'
                 }, status=400)
-        except Cart.DoesNotExist:
-            return JsonResponse({
-                'success': False,
-                'error': 'No active cart found. Please add items to cart before checkout.'
-            }, status=400)
+                
+            try:
+                product = Product.objects.get(id=buy_now_order['product_id'])
+                quantity = buy_now_order['quantity']
+                amount = int((float(product.price * quantity) + 50) * 100)  # Convert to paise and add delivery fee
+            except Product.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Product not found'
+                }, status=404)
+        else:
+            # Regular cart checkout
+            try:
+                cart = Cart.objects.get(user=request.user)
+                if not cart.cartitem_set.exists():
+                    return JsonResponse({
+                        'success': False,
+                        'error': 'Your cart is empty. Please add items to cart before checkout.'
+                    }, status=400)
+                amount = int((cart.get_total() + 50) * 100)  # Convert to paise and add delivery fee
+            except Cart.DoesNotExist:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'No active cart found. Please add items to cart before checkout.'
+                }, status=400)
 
-        amount = int((cart.get_total() + 50) * 100)  # Convert to paise and add delivery fee
+        # Create Razorpay Order
+        order_data = client.order.create({
+            'amount': amount,
+            'currency': 'INR',
+            'payment_capture': 1  # Auto capture payment
+        })
         
-        order_data = create_order(amount)
-        
-        if order_data['success']:
+        if order_data:
             return JsonResponse({
                 'success': True,
-                'order_id': order_data['order_id'],
-                'amount': order_data['amount'],
-                'currency': order_data['currency']
+                'order_id': order_data['id'],
+                'amount': amount,
+                'currency': 'INR'
             })
         else:
             return JsonResponse({
                 'success': False,
-                'error': order_data.get('error', 'Failed to create order')
+                'error': 'Failed to create order'
             })
     except Exception as e:
         return JsonResponse({
@@ -1227,6 +1296,35 @@ def process_cod_order(request):
             if not cart.cartitem_set.exists():
                 return JsonResponse({'success': False, 'message': 'Cart is empty'})
 
+            # Get address data
+            address_id = request.POST.get('address_id')
+            if address_id:
+                try:
+                    address = Address.objects.get(id=address_id, user=request.user)
+                    first_name = address.full_name.split()[0]
+                    last_name = ' '.join(address.full_name.split()[1:]) if len(address.full_name.split()) > 1 else ''
+                    phone = address.phone_number
+                    street_address = address.street_address
+                    city = address.city
+                    state = address.state
+                    pincode = address.postal_code
+                    country = address.country
+                except Address.DoesNotExist:
+                    return JsonResponse({
+                        'success': False,
+                        'message': 'Selected address not found'
+                    })
+            else:
+                # Use form data
+                first_name = request.POST.get('first_name')
+                last_name = request.POST.get('last_name')
+                phone = request.POST.get('phone')
+                street_address = request.POST.get('address')
+                city = request.POST.get('city')
+                state = request.POST.get('state')
+                pincode = request.POST.get('pincode')
+                country = request.POST.get('country', 'India')
+
             # Create order
             order = Order.objects.create(
                 user=request.user,
@@ -1234,14 +1332,15 @@ def process_cod_order(request):
                 payment_status='Pending',
                 order_status='Placed',
                 total_amount=cart.get_total() + 50,  # Adding delivery fee
-                first_name=request.POST.get('first_name'),
-                last_name=request.POST.get('last_name'),
-                email=request.POST.get('email'),
-                phone=request.POST.get('phone'),
-                address=request.POST.get('address'),
-                city=request.POST.get('city'),
-                state=request.POST.get('state'),
-                pincode=request.POST.get('pincode')
+                first_name=first_name,
+                last_name=last_name,
+                email=request.user.email,
+                phone=phone,
+                address=street_address,
+                city=city,
+                state=state,
+                pincode=pincode,
+                country=country
             )
 
             # Create order items
@@ -1263,11 +1362,21 @@ def process_cod_order(request):
             })
 
         except Cart.DoesNotExist:
-            return JsonResponse({'success': False, 'message': 'Cart not found'})
+            return JsonResponse({
+                'success': False,
+                'message': 'Cart not found'
+            })
         except Exception as e:
-            return JsonResponse({'success': False, 'message': str(e)})
+            print(f"Error processing COD order: {str(e)}")  # Add logging
+            return JsonResponse({
+                'success': False,
+                'message': f'An error occurred: {str(e)}'
+            })
 
-    return JsonResponse({'success': False, 'message': 'Invalid request method'})
+    return JsonResponse({
+        'success': False,
+        'message': 'Invalid request method'
+    })
 
 @login_required
 def orders_view(request):
@@ -1386,3 +1495,51 @@ def contact_view(request):
             }, status=400)
             
     return render(request, 'contact.html')
+
+@require_http_methods(["GET"])
+def check_auth(request):
+    """Check if user is authenticated"""
+    return JsonResponse({
+        'is_authenticated': request.user.is_authenticated
+    })
+
+@login_required
+@require_http_methods(["POST"])
+def buy_now_checkout(request):
+    """Handle direct checkout for a single product"""
+    try:
+        data = json.loads(request.body)
+        product_id = data.get('product_id')
+        quantity = int(data.get('quantity', 1))
+        
+        # Get product
+        product = Product.objects.get(id=product_id)
+        
+        if not product.in_stock or product.stock < quantity:
+            return JsonResponse({
+                'success': False,
+                'message': 'Product is out of stock or requested quantity not available'
+            }, status=400)
+        
+        # Create a temporary order session
+        request.session['buy_now_order'] = {
+            'product_id': product_id,
+            'quantity': quantity,
+            'total': float(product.price * quantity)
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'checkout_url': reverse('checkout') + '?mode=buy_now'
+        })
+        
+    except Product.DoesNotExist:
+        return JsonResponse({
+            'success': False,
+            'message': 'Product not found'
+        }, status=404)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'message': str(e)
+        }, status=400)

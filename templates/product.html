@@ -206,8 +206,8 @@
                                     {% endif %}
                                 </div>
                             </div>
-                            <div class="product-actions">
-                                <button class="cart-button" onclick="cartClick(event, '{{ product.id }}')" {% if not product.in_stock %}disabled="disabled"{% endif %}>
+                            <div class="card-actions">
+                                <button class="cart-button" onclick="addToCart({{ product.id }})">
                                     <span class="add-to-cart">Add to cart</span>
                                     <span class="added"><i class="fa-solid fa-circle-check"></i> Done</span>
                                     <i class="fa-solid fa-cart-shopping"></i>
@@ -282,4 +282,48 @@
 {% block extra_js %}
 <script src="{% static 'js/Homepage_updated.js' %}"></script>
 <script src="{% static 'js/product.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Add cart button animation
+        const cartButtons = document.querySelectorAll('.cart-button');
+        cartButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                let button = this;
+                button.classList.add('clicked');
+                setTimeout(() => {
+                    button.classList.remove('clicked');
+                }, 2000);
+            });
+        });
+
+        function showNotification(message, type = 'success') {
+            const notification = document.getElementById('notification');
+            const messageSpan = document.getElementById('notification-message');
+            
+            notification.style.display = 'flex';
+            notification.className = 'notification ' + type;
+            messageSpan.textContent = message;
+            
+            notification.classList.add('show');
+            
+            setTimeout(() => {
+                notification.classList.remove('show');
+                setTimeout(() => {
+                    notification.style.display = 'none';
+                }, 300);
+            }, 3000);
+        }
+
+        window.addToCart = function(productId) {
+            const button = document.querySelector(`.cart-button[onclick="addToCart(${productId})"]`);
+            if (button) {
+                button.classList.add('clicked');
+                setTimeout(() => {
+                    button.classList.remove('clicked');
+                    showNotification('Added to cart successfully!');
+                }, 2000);
+            }
+        }
+    });
+</script>
 {% endblock %}
