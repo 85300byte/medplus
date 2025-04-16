@@ -27,7 +27,15 @@ SECRET_KEY = config('DJANGO_SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['quickmeds.onrender.com']
+
+ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='localhost').split(',')
+
+
+
+ALLOWED_HOSTS =  ['quickmeds.onrender.com',
+                'localhost',
+                '127.0.0.1'
+            ]
 
 # For production, enable this
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=False, cast=bool)

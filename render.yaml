@@ -3,11 +3,11 @@ services:
     name: my-django-app
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn yourprojectname.wsgi
+    startCommand: gunicorn quickmeds.wsgi
     envVars:
       - key: DJANGO_SETTINGS_MODULE
-        value: yourprojectname.settings
-      - key: SECRET_KEY
+        value: quickmeds.settings
+      - key: *lv2g8=u%1&jn#nope9c0gokzqjt@=n9vt-#$s#+8fyzi8o97x
         generateValue: true
         # The configuration looks mostly correct, but there are a few issues to fix:
         # 1. The startCommand should use "quickmeds" instead of "yourprojectname"
