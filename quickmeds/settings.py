@@ -206,4 +206,5 @@ RAZORPAY_KEY_ID = 'rzp_test_tPcdMpc0pKpdgJ'  # Replace with your actual test key
 RAZORPAY_KEY_SECRET = 'yRZXwAiQtCyBKLve67k6llus'  # Replace with your actual secret key 
 
 
+# WhiteNoise configuration
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
