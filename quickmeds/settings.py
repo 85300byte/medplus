@@ -32,7 +32,7 @@ ALLOWED_HOSTS = config('DJANGO_ALLOWED_HOSTS', default='localhost').split(',')
 
 
 
-ALLOWED_HOSTS =  ['quickmeds.onrender.com',
+ALLOWED_HOSTS =  ['medplus-o51u.onrender.com',
                 'localhost',
                 '127.0.0.1'
             ]
