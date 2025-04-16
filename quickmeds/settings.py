@@ -99,12 +99,15 @@ DATABASES = {
     }
 }
 
-# If DATABASE_URL is set, use it
+# If DATABASE_URL is set (production), use PostgreSQL
 if 'DATABASE_URL' in os.environ:
     DATABASES['default'] = dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
         conn_max_age=600,
         ssl_require=True
     )
+    # Ensure we're using PostgreSQL
+    DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql'
 
 
 # Password validation

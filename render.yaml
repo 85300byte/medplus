@@ -1,15 +1,17 @@
 services:
   - type: web
-    name: my-django-app
+    name: medplus
     env: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn quickmeds.wsgi
+    buildCommand: |
+      pip install -r requirements.txt
+      python manage.py migrate
+    startCommand: gunicorn quickmeds.wsgi:application
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: quickmeds.settings
-      - key: *lv2g8=u%1&jn#nope9c0gokzqjt@=n9vt-#$s#+8fyzi8o97x
+      - key: SECRET_KEY
         generateValue: true
-        # The configuration looks mostly correct, but there are a few issues to fix:
-        # 1. The startCommand should use "quickmeds" instead of "yourprojectname"
-        # 2. The DJANGO_SETTINGS_MODULE should use "quickmeds" instead of "yourprojectname"
-        # 3. The SECRET_KEY configuration is correct with generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: medplus-db
+          property: connectionString
