@@ -94,20 +94,22 @@ WSGI_APPLICATION = 'quickmeds.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('DB_NAME', 'medplus'),
+        'USER': os.environ.get('DB_USER', 'postgres'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+        'HOST': os.environ.get('DB_HOST', 'localhost'),
+        'PORT': os.environ.get('DB_PORT', '5432'),
     }
 }
 
-# If DATABASE_URL is set (production), use PostgreSQL
+# If DATABASE_URL is set, use it
 if 'DATABASE_URL' in os.environ:
     DATABASES['default'] = dj_database_url.config(
         default=os.environ.get('DATABASE_URL'),
         conn_max_age=600,
         ssl_require=True
     )
-    # Ensure we're using PostgreSQL
-    DATABASES['default']['ENGINE'] = 'django.db.backends.postgresql'
 
 
 # Password validation
